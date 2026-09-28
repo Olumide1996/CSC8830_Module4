@@ -1,0 +1,13 @@
+{
+  "modality": "thermal",
+  "image": "data\\thermal\\thermal_human.jpg",
+  "bbox": [
+    0,
+    45,
+    270,
+    214
+  ],
+  "area_pixels": 16349,
+  "perimeter_pixels": 1000.9919826984406,
+  "mask_fraction": 0.2152033697512176
+}

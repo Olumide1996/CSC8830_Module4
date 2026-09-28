@@ -1,0 +1,12 @@
+{
+  "model": "facebook/sam2.1-hiera-tiny",
+  "bbox": [
+    0,
+    45,
+    270,
+    214
+  ],
+  "iou": 0.6993363305502034,
+  "dice": 0.8230699455754888,
+  "note": "IoU and Dice measure agreement between the classical mask and the SAM2 mask, not ground-truth accuracy."
+}

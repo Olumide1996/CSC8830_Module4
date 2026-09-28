@@ -1,0 +1,13 @@
+{
+  "modality": "rgb",
+  "image": "data\\rgb\\rgb_human.jpg",
+  "bbox": [
+    300,
+    80,
+    720,
+    930
+  ],
+  "area_pixels": 135958,
+  "perimeter_pixels": 2580.3687443733215,
+  "mask_fraction": 0.18741866825470346
+}
