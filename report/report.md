@@ -1,78 +1,211 @@
-# CSc 8830 Computer Vision — Module 4
-## Classical Human Boundary Segmentation and SAM2 Comparison
+# CSc 8830 Advanced Computer Vision - Module 4
+## Human Boundary Segmentation
 
 **Student:** Olumide Adebisi  
-**GitHub:** https://github.com/Olumide1996/CSC8830_Module4
+**GitHub:** https://github.com/Olumide1996/CSC8830_Module4  
+**Module 4 web app:** https://csc8830-module4-olumide.streamlit.app/  
+**Course portal:** https://csc8830-computer-vision.streamlit.app/
 
-## 1. Objective
+## 1. Objective and scope
 
-This project finds the boundary of a person in an RGB image and in a thermal image using classical OpenCV image-processing methods. The assignment does not allow machine-learning or deep-learning methods for the main implementation. I then compare the classical boundary with SAM2 as a reference method.
+The assignment asks for a script that finds the boundary of a human in an RGB image and a thermal image using classical image processing, followed by a comparison with SAM2. It also asks for a mathematical explanation of edge detection and region segmentation in the Fourier domain.
 
-## 2. RGB Segmentation
+The main human-boundary pipeline in this project uses OpenCV operations only. SAM2 is run separately as a reference comparison and is not part of the primary segmentation pipeline.
 
-[Insert RGB input image]
+The RGB and thermal examples use manually supplied approximate bounding boxes to define the region containing the person. Within those regions, the segmentation is obtained from color or intensity information plus morphology and connected-component cleanup.
 
-[Insert RGB classical mask/overlay]
+## 2. Experimental setup
 
-The RGB pipeline uses an approximate bounding box supplied by the user, color contrast in the Lab color space, edge detection, morphology, connected-component cleanup, and contour extraction. No learned model is used.
+### RGB example
 
-## 3. Thermal Segmentation
+The RGB image is the public Wikimedia Commons example `Man Standing.jpg` by Visitor7, licensed CC BY-SA 3.0.
 
-[Insert thermal input image]
+Bounding box used: `(300, 80, 720, 930)`.
 
-[Insert thermal classical mask/overlay]
+![RGB input](../data/rgb/rgb_human.jpg)
 
-The thermal pipeline uses the grayscale intensity of the thermal display image. A high-intensity threshold is followed by morphology and connected-component selection inside the supplied person box. No learned model is used.
+### Thermal example
 
-## 4. SAM2 Comparison
+The final thermal example used for the reported experiment is the clear NASA/IPAC infrared human image distributed as a public-domain example.
 
-[Insert SAM2 comparison images]
+Bounding box used: `(0, 45, 270, 214)`.
 
-SAM2 was used only as a reference comparison. The same bounding box was given to SAM2 so that the two methods received the same basic object-location information. SAM2 supports box prompts for image segmentation. [1]
+![Thermal input](../data/thermal/thermal_human.jpg)
 
-| Modality | Classical vs. SAM2 IoU | Dice |
+The bounding boxes are only approximate object-location hints. They are not the segmentation masks themselves. The same boxes were supplied to SAM2 so both methods received the same basic location information.
+
+## 3. Classical RGB human segmentation
+
+The RGB method works inside the supplied bounding box. The ROI is converted from BGR to CIELAB. A background color is estimated from the median Lab values along the ROI border. Each pixel is compared with that background estimate, and Otsu thresholding creates a binary color-distance mask.
+
+A Canny edge map is added so that body and clothing boundaries are not lost. Morphological closing and opening reduce gaps and isolated noise. A distance transform supplies a foreground core. Connected-component filtering, hole filling, and contour extraction produce the final mask.
+
+![RGB classical overlay](../outputs/rgb/classical_overlay.png)
+
+Final RGB measurements:
+
+| Metric | Result |
+|---|---:|
+| Foreground pixels | 135,958 |
+| Mask fraction | 18.74% |
+| Boundary perimeter | 2580.4 px |
+
+## 4. Classical thermal human segmentation
+
+The thermal display is converted to grayscale and lightly blurred with a 5x5 Gaussian kernel. Otsu thresholding provides an image-dependent separation between hotter and darker pixels. Morphological closing keeps the raised arm connected to the body, while opening removes small isolated regions.
+
+The largest connected component inside the person box is retained. A percentile-based fallback threshold is available if Otsu produces an implausibly small region. Final post-processing fills holes and returns the mask to full-image coordinates.
+
+![Thermal classical overlay](../outputs/thermal/classical_overlay.png)
+
+Final thermal measurements:
+
+| Metric | Result |
+|---|---:|
+| Foreground pixels | 16,349 |
+| Mask fraction | 21.52% |
+| Boundary perimeter | 1001.0 px |
+
+## 5. SAM2 comparison
+
+SAM2 is a promptable segmentation model developed by Meta that accepts image prompts such as clicks, boxes, or masks. The experiment used the Transformers checkpoint `facebook/sam2.1-hiera-tiny`. The model was run separately from the classical pipeline using the same approximate bounding-box prompt.
+
+RGB comparison:
+
+![RGB comparison](../outputs/rgb/comparison_panel.png)
+
+Thermal comparison:
+
+![Thermal comparison](../outputs/thermal/comparison_panel.png)
+
+The mask-overlap metrics are:
+
+\[
+\mathrm{IoU}=\frac{|A\cap B|}{|A\cup B|},\qquad
+\mathrm{Dice}=\frac{2|A\cap B|}{|A|+|B|}
+\]
+
+| Modality | Classical vs. SAM2 IoU | Classical vs. SAM2 Dice |
 |---|---:|---:|
-| RGB | [fill] | [fill] |
-| Thermal | [fill] | [fill] |
+| RGB | 0.8706 | 0.9308 |
+| Thermal | 0.6993 | 0.8231 |
 
-These values measure agreement between the two masks. They should not be described as ground-truth accuracy because SAM2 itself is not a manually verified ground truth.
+These values quantify agreement between the classical mask and the SAM2 mask. They are **not ground-truth accuracy values**, because no manually labeled reference mask was created for this assignment.
 
-## 5. Fourier-Domain Theory
+## 6. Fourier-domain theory
 
-For an image \(f(x,y)\), spatial differentiation becomes multiplication in the Fourier domain:
+Let the image be `f(x,y)` with Fourier transform `F(u,v)`. Spatial derivatives become multiplications by frequency in the Fourier domain:
 
 \[
 \mathcal{F}\left\{\frac{\partial f}{\partial x}\right\}=j2\pi uF(u,v),
 \qquad
-\mathcal{F}\left\{\frac{\partial f}{\partial y}\right\}=j2\pi vF(u,v).
+\mathcal{F}\left\{\frac{\partial f}{\partial y}\right\}=j2\pi vF(u,v)
 \]
 
-Edges correspond to rapid spatial changes, so their energy is concentrated at higher spatial frequencies. A high-pass filter can therefore emphasize edges before a region is separated or a boundary is extracted.
+After inverse transforming the derivative responses, the gradient magnitude is
+
+\[
+G(x,y)=\sqrt{G_x^2(x,y)+G_y^2(x,y)}.
+\]
+
+Large responses occur where image intensity changes rapidly, which is why the edge map emphasizes object boundaries as well as strong background edges.
 
 For the Laplacian,
 
 \[
-\mathcal{F}\{\nabla^2f\}=-4\pi^2(u^2+v^2)F(u,v).
+\mathcal{F}\{\nabla^2 f\}=-4\pi^2(u^2+v^2)F(u,v).
 \]
 
-This shows directly why the Laplacian emphasizes high-frequency components associated with edges.
+The multiplier grows with frequency, so the Laplacian also emphasizes higher-frequency content.
 
-Segmentation itself is a nonlinear decision that produces a region mask \(M(x,y)\). Fourier filtering can be used as a preprocessing step to smooth noise or strengthen boundaries, after which thresholding, connected components, or contour extraction can produce the final mask.
+For a frequency response `H(u,v)`, frequency-domain filtering is
 
-## 6. Results and Discussion
+\[
+g(x,y)=\mathcal{F}^{-1}\{H(u,v)F(u,v)\}.
+\]
 
-The classical RGB and thermal methods use only traditional image-processing operations. Their results depend on the input image, the selected bounding box, lighting or thermal contrast, and the quality of the boundaries in the source image.
+A simple threshold can then form a region mask:
 
-The SAM2 comparison shows how closely the classical boundary follows a modern promptable segmentation reference. The comparison should be interpreted as method agreement rather than an accuracy score.
+\[
+M(x,y)=\begin{cases}
+1,&g(x,y)>T\\
+0,&g(x,y)\le T
+\end{cases}
+\]
 
-## 7. Web Application
+### Implemented Fourier demonstration
 
-The Streamlit application allows the user to upload an RGB or thermal image, define the approximate human region, run the classical segmentation method, and view the mask, contour, and Fourier edge map. Saved experiment outputs can also be displayed directly in the web interface.
+The Fourier script computes a centered FFT magnitude spectrum, forms gradient derivatives with the `j2πu` and `j2πv` multipliers, and creates a gradient-magnitude edge map. It then applies a Gaussian low-pass filter with normalized-frequency sigma `0.08`, performs Otsu thresholding on the filtered image, applies morphology, and keeps the largest connected component.
 
-## 8. Conclusion
+![Fourier spectrum](../outputs/rgb/fourier/fourier_spectrum.png)
 
-The project demonstrates that human boundaries can be extracted without a learned model by combining basic color or thermal-intensity separation with edges, morphology, connected components, and contours. Fourier-domain filtering gives another way to emphasize the image changes that form object boundaries. SAM2 provides a useful reference for comparing the resulting masks, while the classical OpenCV pipeline satisfies the main implementation restriction.
+![Fourier edge map](../outputs/rgb/fourier/fourier_edges.png)
 
-### Reference
+![Fourier low-pass](../outputs/rgb/fourier/fourier_low_pass.png)
 
-[1] Meta AI, “SAM 2: Segment Anything in Images and Videos,” official research and repository documentation. https://ai.meta.com/research/sam2/ and https://github.com/facebookresearch/sam2
+![Fourier threshold demonstration](../outputs/rgb/fourier/fourier_segmentation_overlay.png)
+
+The simple frequency-filter/threshold demonstration over-segments strong background structures such as railings, the vehicle, and pavement. This is expected because high-frequency components identify rapid intensity changes wherever they occur, not only at the human boundary. The Fourier implementation is therefore presented as the requested theory demonstration, while the final human masks use the classical spatial-domain OpenCV pipeline.
+
+## 7. Results and discussion
+
+The RGB result follows the person through the head, shoulders, arms, torso, legs, and shoes. The thermal result follows the hot human region and preserves the raised arm and hand.
+
+The RGB and thermal IoU/Dice values show the degree of overlap between the classical and SAM2 masks. They should be interpreted as method-to-method agreement rather than accuracy against ground truth.
+
+The Fourier results demonstrate the requested frequency-domain concepts, while also showing the practical limitation of using a simple thresholded frequency response for human segmentation in a cluttered scene.
+
+## 8. Limitations
+
+- The classical pipeline uses a user-provided approximate bounding box. Fully automatic person localization would require an additional detection stage.
+- RGB segmentation depends on contrast between the person and local background.
+- Thermal segmentation depends on the thermal contrast visible in the supplied image and display palette.
+- The simple Fourier threshold demonstration over-segments strong background edges.
+- Ground-truth segmentation masks were not available, so IoU/Dice are not accuracy measurements.
+
+## 9. Web application and verification
+
+The public Streamlit app presents the saved RGB and thermal classical outputs, SAM2 comparison panels and metrics, Fourier results, mathematical theory, and an interactive upload path for the classical method.
+
+The permanent course portal lists Modules 2, 3, and 4:
+
+https://csc8830-computer-vision.streamlit.app/
+
+The Module 4 public app is:
+
+https://csc8830-module4-olumide.streamlit.app/
+
+The final local automated test run completed with **5 passed tests**.
+
+### Main reproduction commands
+
+```powershell
+python -m pytest -q
+
+python src\run_experiment.py --image data\rgb\rgb_human.jpg --modality rgb --bbox 300 80 720 930 --output-dir outputs\rgb
+
+python src\run_experiment.py --image data\thermal\thermal_human.jpg --modality thermal --bbox 0 45 270 214 --output-dir outputs\thermal
+
+python scripts\fourier_analysis.py --image data\rgb\rgb_human.jpg --output-dir outputs\rgb\fourier
+
+python src\sam2_compare.py --image data\rgb\rgb_human.jpg --bbox 300 80 720 930 --classical-mask outputs\rgb\classical_mask.png --output-mask outputs\rgb\sam2_mask.png
+
+python src\sam2_compare.py --image data\thermal\thermal_human.jpg --bbox 0 45 270 214 --classical-mask outputs\thermal\classical_mask.png --output-mask outputs\thermal\sam2_mask.png
+```
+
+## 10. Conclusion
+
+This project demonstrates a complete classical human-boundary segmentation workflow for both RGB and thermal images. The RGB method combines Lab color distance, Canny edges, morphology, connected components, and contours. The thermal method uses grayscale intensity, Otsu thresholding, morphology, and connected components. Both run without a machine-learning or deep-learning model in the primary pipeline.
+
+SAM2 provides a separate reference point. Using the same approximate box prompt, the classical and SAM2 masks have IoU/Dice overlaps of `0.8706/0.9308` for RGB and `0.6993/0.8231` for thermal. These values quantify overlap between the two methods rather than ground-truth accuracy.
+
+The Fourier portion connects the implementation to the requested theory. Spatial derivatives become frequency multipliers, high-frequency components emphasize rapid changes, and frequency-domain filtering can be followed by thresholding to form regions. The experiment also shows why frequency information alone is not enough to isolate a person in a cluttered image: strong background edges are selected too.
+
+## References
+
+1. Meta AI. "Introducing Meta Segment Anything Model 2 (SAM 2)." 2024. https://ai.meta.com/research/sam2/
+2. Ravi, N., et al. "SAM 2: Segment Anything in Images and Videos." arXiv:2408.00714, 2024. https://arxiv.org/abs/2408.00714
+3. Hugging Face. `facebook/sam2.1-hiera-tiny` model card and Transformers usage. https://huggingface.co/facebook/sam2.1-hiera-tiny
+4. OpenCV documentation. Canny Edge Detection, Image Thresholding, and Morphological Transformations. https://docs.opencv.org/4.x/
+5. Wikimedia Commons. "Man Standing.jpg" by Visitor7, CC BY-SA 3.0. https://commons.wikimedia.org/wiki/File:Man_Standing.jpg
+6. NASA/IPAC Infrared Science Archive. "Human-Infrared.jpg" public-domain thermal example.
